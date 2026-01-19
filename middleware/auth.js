@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const inMemoryDb = require('../db/inMemoryDb');
 
 const auth = async (req, res, next) => {
   try {
@@ -14,12 +15,18 @@ const auth = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
     // Get user from token
-    req.user = await User.findById(decoded.userId).select('-password');
+    let user;
+    if (global.useInMemoryDb) {
+      user = await inMemoryDb.findUserById(decoded.userId);
+    } else {
+      user = await User.findById(decoded.userId).select('-password');
+    }
     
-    if (!req.user) {
+    if (!user) {
       return res.status(401).json({ message: 'Token is not valid' });
     }
 
+    req.user = user;
     next();
   } catch (error) {
     res.status(401).json({ message: 'Token is not valid' });

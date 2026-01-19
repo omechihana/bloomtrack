@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import habitService from '../services/habitService';
 import quoteService from '../services/quoteService';
 import StatCard from '../components/StatCard';
@@ -16,29 +16,31 @@ const DashboardPage = () => {
   const [quote, setQuote] = useState(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const location = useLocation();
 
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [habitsData, statsData, quoteData] = await Promise.all([
+        habitService.getHabits(),
+        habitService.getUserStats(),
+        quoteService.getRandomQuote()
+      ]);
+
+      setHabits(habitsData);
+      setStats(statsData);
+      setQuote(quoteData);
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch data on component mount and whenever location changes
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const [habitsData, statsData, quoteData] = await Promise.all([
-          habitService.getHabits(),
-          habitService.getUserStats(),
-          quoteService.getRandomQuote()
-        ]);
-
-        setHabits(habitsData);
-        setStats(statsData);
-        setQuote(quoteData);
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchData();
-  }, []);
+  }, [location]);
 
   const handleCompleteHabit = async (habitId) => {
     try {

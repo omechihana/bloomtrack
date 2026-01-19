@@ -41,6 +41,10 @@ module.exports = {
   getUserHabits: async (userId) => {
     return inMemoryHabits.filter(h => h.userId === userId);
   },
+
+  getHabitById: async (habitId) => {
+    return inMemoryHabits.find(h => h._id === habitId);
+  },
   
   updateHabit: async (habitId, updateData) => {
     const habit = inMemoryHabits.find(h => h._id === habitId);
@@ -50,11 +54,12 @@ module.exports = {
     return habit;
   },
   
-  deleteHabit: async (habitId) => {
-    const index = inMemoryHabits.findIndex(h => h._id === habitId);
+  deleteHabit: async (habitId, userId) => {
+    const index = inMemoryHabits.findIndex(h => h._id === habitId && h.userId === userId);
     if (index > -1) {
-      return inMemoryHabits.splice(index, 1)[0];
+      inMemoryHabits.splice(index, 1);
+      return true;
     }
-    return null;
+    return false;
   }
 };

@@ -14,7 +14,7 @@ global.useInMemoryDb = false;
 
 // Connect to MongoDB
 const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/bloomtrack';
-const mongoPromise = mongoose.connect(mongoUri, {
+mongoose.connect(mongoUri, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
   serverSelectionTimeoutMS: 5000,
@@ -22,6 +22,13 @@ const mongoPromise = mongoose.connect(mongoUri, {
 .then(() => {
   console.log('✓ MongoDB connected successfully');
   global.useInMemoryDb = false;
+
+  // Optional: create a test document to verify DB connection
+  const testSchema = new mongoose.Schema({ name: String });
+  const Test = mongoose.model('Test', testSchema);
+  Test.create({ name: 'Omega' })
+    .then(() => console.log('Test document added'))
+    .catch(() => {}); // Ignore if already exists
 })
 .catch(err => {
   console.error('✗ MongoDB connection error:', err.message);
@@ -29,6 +36,11 @@ const mongoPromise = mongoose.connect(mongoUri, {
   global.useInMemoryDb = true;
 });
 
+// Health check route
+app.get('/health', (req, res) => {
+  const status = global.useInMemoryDb ? 'Using in-memory DB' : 'MongoDB connected';
+  res.json({ status: `Backend is running. ${status}` });
+});
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));

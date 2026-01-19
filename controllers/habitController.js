@@ -1,12 +1,19 @@
 const Habit = require('../models/Habit');
 const User = require('../models/User');
+const inMemoryDb = require('../db/inMemoryDb');
 
 // @desc    Get all habits for logged in user
 // @route   GET /api/habits
 // @access  Private
 const getHabits = async (req, res) => {
   try {
-    const habits = await Habit.find({ userId: req.user._id }).sort({ createdAt: -1 });
+    let habits;
+    if (global.useInMemoryDb) {
+      habits = await inMemoryDb.getUserHabits(req.user._id);
+      habits = habits.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    } else {
+      habits = await Habit.find({ userId: req.user._id }).sort({ createdAt: -1 });
+    }
     res.json(habits);
   } catch (error) {
     console.error(error);
@@ -19,10 +26,18 @@ const getHabits = async (req, res) => {
 // @access  Private
 const getHabit = async (req, res) => {
   try {
-    const habit = await Habit.findOne({
-      _id: req.params.id,
-      userId: req.user._id
-    });
+    let habit;
+    if (global.useInMemoryDb) {
+      habit = await inMemoryDb.getHabitById(req.params.id);
+      if (habit && habit.userId !== req.user._id) {
+        habit = null;
+      }
+    } else {
+      habit = await Habit.findOne({
+        _id: req.params.id,
+        userId: req.user._id
+      });
+    }
 
     if (!habit) {
       return res.status(404).json({ message: 'Habit not found' });
@@ -47,14 +62,26 @@ const createHabit = async (req, res) => {
       return res.status(400).json({ message: 'Please provide title, description, and frequency' });
     }
 
-    const habit = new Habit({
-      title,
-      description,
-      frequency,
-      userId: req.user._id
-    });
-
-    await habit.save();
+    let habit;
+    if (global.useInMemoryDb) {
+      habit = await inMemoryDb.createHabit({
+        title,
+        description,
+        frequency,
+        userId: req.user._id,
+        completedDates: [],
+        isActive: true
+      });
+    } else {
+      habit = new Habit({
+        title,
+        description,
+        frequency,
+        userId: req.user._id
+      });
+      await habit.save();
+    }
+    
     res.status(201).json(habit);
   } catch (error) {
     console.error(error);
@@ -69,22 +96,39 @@ const updateHabit = async (req, res) => {
   try {
     const { title, description, frequency, isActive } = req.body;
 
-    const habit = await Habit.findOne({
-      _id: req.params.id,
-      userId: req.user._id
-    });
+    let habit;
+    if (global.useInMemoryDb) {
+      habit = await inMemoryDb.getHabitById(req.params.id);
+      if (!habit || habit.userId !== req.user._id) {
+        return res.status(404).json({ message: 'Habit not found' });
+      }
 
-    if (!habit) {
-      return res.status(404).json({ message: 'Habit not found' });
+      const updateData = {};
+      if (title !== undefined) updateData.title = title;
+      if (description !== undefined) updateData.description = description;
+      if (frequency !== undefined) updateData.frequency = frequency;
+      if (isActive !== undefined) updateData.isActive = isActive;
+
+      habit = await inMemoryDb.updateHabit(req.params.id, updateData);
+    } else {
+      habit = await Habit.findOne({
+        _id: req.params.id,
+        userId: req.user._id
+      });
+
+      if (!habit) {
+        return res.status(404).json({ message: 'Habit not found' });
+      }
+
+      // Update fields if provided
+      if (title !== undefined) habit.title = title;
+      if (description !== undefined) habit.description = description;
+      if (frequency !== undefined) habit.frequency = frequency;
+      if (isActive !== undefined) habit.isActive = isActive;
+
+      await habit.save();
     }
 
-    // Update fields if provided
-    if (title !== undefined) habit.title = title;
-    if (description !== undefined) habit.description = description;
-    if (frequency !== undefined) habit.frequency = frequency;
-    if (isActive !== undefined) habit.isActive = isActive;
-
-    await habit.save();
     res.json(habit);
   } catch (error) {
     console.error(error);
@@ -97,13 +141,21 @@ const updateHabit = async (req, res) => {
 // @access  Private
 const deleteHabit = async (req, res) => {
   try {
-    const habit = await Habit.findOneAndDelete({
-      _id: req.params.id,
-      userId: req.user._id
-    });
+    let deleted = false;
+    if (global.useInMemoryDb) {
+      deleted = await inMemoryDb.deleteHabit(req.params.id, req.user._id);
+      if (!deleted) {
+        return res.status(404).json({ message: 'Habit not found' });
+      }
+    } else {
+      const habit = await Habit.findOneAndDelete({
+        _id: req.params.id,
+        userId: req.user._id
+      });
 
-    if (!habit) {
-      return res.status(404).json({ message: 'Habit not found' });
+      if (!habit) {
+        return res.status(404).json({ message: 'Habit not found' });
+      }
     }
 
     res.json({ message: 'Habit removed' });
@@ -118,13 +170,22 @@ const deleteHabit = async (req, res) => {
 // @access  Private
 const completeHabit = async (req, res) => {
   try {
-    const habit = await Habit.findOne({
-      _id: req.params.id,
-      userId: req.user._id
-    });
+    let habit;
+    
+    if (global.useInMemoryDb) {
+      habit = await inMemoryDb.getHabitById(req.params.id);
+      if (!habit || habit.userId !== req.user._id) {
+        return res.status(404).json({ message: 'Habit not found' });
+      }
+    } else {
+      habit = await Habit.findOne({
+        _id: req.params.id,
+        userId: req.user._id
+      });
 
-    if (!habit) {
-      return res.status(404).json({ message: 'Habit not found' });
+      if (!habit) {
+        return res.status(404).json({ message: 'Habit not found' });
+      }
     }
 
     // Check if already completed today
@@ -170,7 +231,11 @@ const completeHabit = async (req, res) => {
       streakCount
     });
 
-    await habit.save();
+    if (global.useInMemoryDb) {
+      await inMemoryDb.updateHabit(req.params.id, { completedDates: habit.completedDates });
+    } else {
+      await habit.save();
+    }
 
     res.json({
       message: 'Habit marked as completed',
@@ -187,7 +252,13 @@ const completeHabit = async (req, res) => {
 // @access  Private
 const getUserStats = async (req, res) => {
   try {
-    const habits = await Habit.find({ userId: req.user._id });
+    let habits;
+    
+    if (global.useInMemoryDb) {
+      habits = await inMemoryDb.getUserHabits(req.user._id);
+    } else {
+      habits = await Habit.find({ userId: req.user._id });
+    }
     
     if (habits.length === 0) {
       return res.json({
